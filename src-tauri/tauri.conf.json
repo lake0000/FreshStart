@@ -1,0 +1,33 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "FreshStart",
+  "version": "0.1.0",
+  "identifier": "local.freshstart.desktop",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://127.0.0.1:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../build/web"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "FreshStart",
+        "width": 420,
+        "height": 560,
+        "minWidth": 360,
+        "minHeight": 520,
+        "resizable": false,
+        "fullscreen": false,
+        "center": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all"
+  }
+}

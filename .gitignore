@@ -1,0 +1,29 @@
+node_modules/
+build/
+.vite/
+coverage/
+playwright-report/
+test-results/
+.ms-playwright/
+.cargo/
+.rustup/
+.tooling/
+src-tauri/target/
+src-tauri/gen/
+
+# Local runtime data. These may contain the user's real startup entries,
+# disabled shortcut backups, local paths, and historical records.
+FreshStart/
+disabled/
+freshstart.sqlite
+state.json
+*.exe
+!/freshstart.exe
+*.msi
+*.sqlite
+*.sqlite3
+*.db
+*.db-shm
+*.db-wal
+*.log
+.DS_Store
