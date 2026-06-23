@@ -23,6 +23,10 @@ FreshStart 是一个轻量、清爽、可恢复的 Windows 开机自启管理面
   - `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`
   - `HKCU\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Run`
 - 扫描当前用户 Startup 文件夹里的 `.lnk` 快捷方式。
+- 添加新的开机自启项：
+  - 点击 `+` 后粘贴 exe 路径。
+  - 在桌面版 WebView 能提供真实路径时，也可以把 exe 拖入窗口自动填入。
+  - 默认写入当前用户 `HKCU Run`，不需要用户理解注册表。
 - 开关启动项：
   - 注册表项关闭时删除对应值，恢复时写回原命令。
   - Startup 快捷方式关闭时移动到 FreshStart 的禁用备份目录，恢复时移回原位置。
@@ -48,6 +52,8 @@ FreshStart 当前是一个保守的当前用户启动项管理工具，不是完
 - Scheduled Tasks
 - 浏览器插件、应用内部自启动设置
 - 安全软件或驱动级常驻组件
+
+手动添加功能当前也只支持 `.exe` 程序，不支持 `.bat`、`.cmd`、`.ps1`、服务或计划任务。`cmd.exe`、`powershell.exe`、`rundll32.exe`、`wscript.exe` 等命令解释器/脚本宿主会被拒绝添加。
 
 因此，有些软件“看起来会开机启动”，但如果它们来自服务、计划任务或应用内部机制，FreshStart 可能不会显示。这是有意为之：第一阶段优先保证可恢复、低风险、不会误动系统级配置。
 

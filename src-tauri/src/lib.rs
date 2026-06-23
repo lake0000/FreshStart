@@ -37,14 +37,40 @@ fn list_startup_items() -> AppResult<Vec<startup::StartupItem>> {
 }
 
 #[tauri::command]
-fn set_startup_enabled(id: String, enabled: bool, expected_command: Option<String>) -> AppResult<Vec<startup::StartupItem>> {
+fn set_startup_enabled(
+    id: String,
+    enabled: bool,
+    expected_command: Option<String>,
+) -> AppResult<Vec<startup::StartupItem>> {
     startup::set_startup_enabled(&id, enabled, expected_command.as_deref())?;
     startup::list_startup_items()
 }
 
+#[tauri::command]
+fn add_startup_item_from_path(
+    request: startup::AddStartupItemRequest,
+) -> AppResult<Vec<startup::StartupItem>> {
+    startup::add_startup_item_from_path(request)?;
+    startup::list_startup_items()
+}
+
+#[tauri::command]
+fn pick_exe_file() -> Option<String> {
+    rfd::FileDialog::new()
+        .add_filter("Windows 程序", &["exe"])
+        .set_title("选择要开机自启的 exe")
+        .pick_file()
+        .map(|path| path.to_string_lossy().to_string())
+}
+
 pub fn run() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![list_startup_items, set_startup_enabled])
+        .invoke_handler(tauri::generate_handler![
+            list_startup_items,
+            set_startup_enabled,
+            add_startup_item_from_path,
+            pick_exe_file
+        ])
         .setup(|app| {
             setup_tray(app.handle())?;
             if let Some(window) = app.get_webview_window("main") {

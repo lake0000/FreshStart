@@ -187,3 +187,91 @@ npm run tauri:build
 
 - 未执行关机、断网、关闭 Clash、系统级注册表、服务、驱动、计划任务相关测试。
 - 未对真实常用软件启动项做破坏性关闭/恢复测试；自动化验证均使用 mock、组件测试、E2E UI 和 Rust 单元测试完成。
+
+## 2026-06-21 添加开机自启测试结果
+
+- `npm run build`
+  - 通过。
+  - TypeScript 与 Vite 生产构建成功。
+- `npm run test:unit`
+  - 通过。
+  - 2 个测试文件通过。
+  - 13 个前端/业务用例通过。
+  - 新增覆盖：添加面板输入 exe 路径和启动参数后调用 backend，并在列表展示新启动项。
+- `npm run test:e2e`
+  - 通过。
+  - 12 个 Playwright 用例通过。
+  - 新增覆盖：桌面和窄屏视口下添加 exe 路径为开机自启项。
+- `npm run tauri:test`
+  - 通过。
+  - 11 个 Rust 用例通过。
+  - 新增覆盖：启动命令构造、注册表值名清理、拒绝高风险命令解释器。
+- `npm run tauri:build`
+  - 通过。
+  - 产物：`<project-root>\src-tauri\target\release\freshstart.exe`。
+  - 已自动同步到：`<project-root>\freshstart.exe`。
+- 根目录 exe 冒烟测试
+  - 通过。
+  - `<project-root>\freshstart.exe` 启动后保持运行 5 秒，随后已停止。
+
+说明：
+
+- 未执行真实注册表添加测试，避免把测试程序实际加入当前用户开机自启。
+- 自动化测试使用 mock backend、组件测试、E2E UI 和 Rust 纯逻辑测试完成。
+- 新增功能仍保持安全边界：只支持当前用户 HKCU Run，不操作 HKLM、服务、驱动、计划任务。
+
+## 2026-06-23 拖入 exe 解析修正测试结果
+
+- `npm run build`
+  - 通过。
+  - TypeScript 与 Vite 生产构建成功。
+- `npm run test:unit`
+  - 通过。
+  - 2 个测试文件通过。
+  - 13 个前端/业务用例通过。
+- `npm run test:e2e`
+  - 12 个 Playwright 用例均输出通过状态。
+  - 当前环境下 Playwright/Windows dev-server 回收阶段未正常退出，命令被外层超时截断；未出现断言失败。
+- `npm run tauri:build`
+  - Tauri release 构建通过。
+  - 初次复制根目录 exe 时旧 `freshstart.exe` 正在运行导致 `EBUSY`。
+  - 已确认占用进程路径为 `<project-root>\freshstart.exe` 后停止该进程，并成功同步最新 exe。
+- Tauri 配置验证
+  - 通过。
+  - `dragDropEnabled` 已被 release 构建接受。
+- 根目录 exe
+  - 已更新为最新构建：`<project-root>\freshstart.exe`。
+- 根目录 exe 冒烟测试
+  - 通过。
+  - `<project-root>\freshstart.exe` 启动后保持运行 5 秒，随后已停止。
+
+说明：
+
+- 本轮修复主要针对 Tauri 桌面文件拖放事件，自动化环境无法真实模拟 Windows Explorer 拖入 exe 到 WebView。
+- 保留了浏览器 drop fallback，Tauri 桌面版使用 `getCurrentWebview().onDragDropEvent` 获取真实路径。
+
+## 2026-06-23 选择 exe 兜底测试结果
+
+- `npm run build`
+  - 通过。
+  - TypeScript 与 Vite 生产构建成功。
+- `npm run test:unit`
+  - 通过。
+  - 2 个测试文件通过。
+  - 14 个前端/业务用例通过。
+  - 新增覆盖：点击“选择”按钮后由 backend 返回 exe 路径并填入输入框。
+- `npm run tauri:test`
+  - 通过。
+  - 11 个 Rust 用例通过。
+  - 首次运行需要下载新增 Rust 依赖 `rfd`。
+- `npm run tauri:build`
+  - Tauri release 构建通过。
+  - 初次复制根目录 exe 时旧 `freshstart.exe` 正在运行导致 `EBUSY`。
+  - 已确认占用进程路径为 `<project-root>\freshstart.exe` 后停止该进程，并成功同步最新 exe。
+- 根目录 exe 冒烟测试
+  - 通过。
+  - `<project-root>\freshstart.exe` 启动后保持运行 5 秒，随后已停止。
+
+说明：
+
+- 新增“选择”按钮作为拖放不可用时的稳定主路径，打开原生 Windows 文件选择框，不依赖浏览器文件拖放路径暴露。

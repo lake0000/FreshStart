@@ -1,4 +1,4 @@
-import type { FreshStartBackend, StartupItem } from "./types";
+import type { AddStartupItemRequest, FreshStartBackend, StartupItem } from "./types";
 import { createMockItems } from "./mockData";
 
 function createMockBackend(): FreshStartBackend {
@@ -14,6 +14,33 @@ function createMockBackend(): FreshStartBackend {
       items = items.map((item) => (item.id === id ? { ...item, enabled } : item));
       return clone(items);
     },
+    async addStartupItemFromPath(request: AddStartupItemRequest) {
+      await delay(140);
+      const name = request.name?.trim() || appNameFromPath(request.path);
+      const command = `"${request.path.trim().replace(/^["']|["']$/g, "")}"${request.args?.trim() ? ` ${request.args.trim()}` : ""}`;
+      const id = `registry:FreshStart_${name}`;
+      if (items.some((item) => item.id === id)) {
+        throw new Error("同名开机启动项已存在，已拒绝覆盖");
+      }
+      items = [
+        {
+          id,
+          name,
+          rawName: `FreshStart_${name}`,
+          source: "registry",
+          enabled: true,
+          command,
+          appPath: request.path,
+          riskLevel: "normal",
+        },
+        ...items,
+      ];
+      return clone(items);
+    },
+    async pickExeFile() {
+      await delay(80);
+      return "C:\\Tools\\Kimi\\Kimi.exe";
+    },
   };
 }
 
@@ -26,6 +53,14 @@ function createTauriBackend(): FreshStartBackend {
     async setStartupEnabled(id: string, enabled: boolean, expectedCommand?: string) {
       const { invoke } = await import("@tauri-apps/api/core");
       return invoke<StartupItem[]>("set_startup_enabled", { id, enabled, expectedCommand });
+    },
+    async addStartupItemFromPath(request: AddStartupItemRequest) {
+      const { invoke } = await import("@tauri-apps/api/core");
+      return invoke<StartupItem[]>("add_startup_item_from_path", { request });
+    },
+    async pickExeFile() {
+      const { invoke } = await import("@tauri-apps/api/core");
+      return invoke<string | null>("pick_exe_file");
     },
   };
 }
@@ -48,4 +83,10 @@ function clone<T>(value: T): T {
 
 function delay(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function appNameFromPath(path: string) {
+  const normalized = path.trim().replace(/^["']|["']$/g, "").replace(/\\/g, "/");
+  const fileName = normalized.split("/").filter(Boolean).pop() || "新启动项";
+  return fileName.replace(/\.exe$/i, "") || "新启动项";
 }

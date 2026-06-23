@@ -48,9 +48,17 @@ export interface StartupStats {
   total: number;
 }
 
+export interface AddStartupItemRequest {
+  path: string;
+  args?: string;
+  name?: string;
+}
+
 export interface FreshStartBackend {
   listStartupItems(): Promise<StartupItem[]>;
   setStartupEnabled(id: string, enabled: boolean, expectedCommand?: string): Promise<StartupItem[]>;
+  addStartupItemFromPath(request: AddStartupItemRequest): Promise<StartupItem[]>;
+  pickExeFile(): Promise<string | null>;
 }
 
 declare global {

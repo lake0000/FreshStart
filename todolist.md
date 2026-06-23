@@ -81,3 +81,35 @@
 - [x] 为路径展开补充 Playwright 桌面/窄屏 E2E 测试。
 - [x] 修正 E2E 首屏打开方式，改为等待 DOM ready 后用标题可见性确认页面可用，减少 Vite 冷启动偶发超时。
 - [x] 重新构建 release exe，并同步到项目根目录 `freshstart.exe`。
+
+## 2026-06-21 添加开机自启记录
+
+- [x] 新增“小白模式”添加入口：顶部 `+` 按钮展开添加面板。
+- [x] 支持粘贴 exe 路径并填写可选启动参数。
+- [x] 支持拖入 exe 文件尝试自动填入路径；若 WebView/浏览器无法提供真实路径，则提示手动粘贴。
+- [x] 后端新增 `add_startup_item_from_path` Tauri 命令，默认写入当前用户 HKCU Run，不操作 HKLM、服务或计划任务。
+- [x] 添加前校验 exe 文件必须存在、必须是文件、扩展名必须为 `.exe`。
+- [x] 拒绝把 `cmd.exe`、`powershell.exe`、`rundll32.exe`、`wscript.exe` 等命令解释器/脚本宿主加入自启。
+- [x] 自动读取友好应用名并生成 `FreshStart_应用名` 注册表值名；同名项存在时拒绝覆盖。
+- [x] 添加成功后写入 SQLite 历史并立即刷新列表，可继续用原开关关闭/恢复。
+- [x] 补充 React 组件测试、Playwright E2E 测试和 Rust 纯逻辑测试。
+- [x] 重新构建 release exe，并同步到项目根目录 `freshstart.exe`。
+
+## 2026-06-23 拖入 exe 解析修正记录
+
+- [x] 修复桌面版拖入 exe 无法自动解析路径的问题。
+- [x] 保留浏览器 `drop` 事件作为 mock/测试 fallback。
+- [x] 在 Tauri 桌面环境中改用 `getCurrentWebview().onDragDropEvent` 读取真实本机文件路径。
+- [x] 在 Tauri 窗口配置中显式启用 `dragDropEnabled`。
+- [x] 支持 Tauri `enter` / `over` / `leave` / `drop` 状态更新拖拽提示。
+- [x] 增加 `file:///C:/...` 形式路径的 Windows 规范化处理。
+- [x] 重新构建 release exe，并同步到项目根目录 `freshstart.exe`。
+
+## 2026-06-23 选择 exe 兜底记录
+
+- [x] 新增“选择”按钮，打开原生 Windows 文件选择框定位 `.exe`。
+- [x] 新增 `pick_exe_file` Tauri 命令，使用 Rust 后端返回真实本机路径。
+- [x] 添加 `rfd` 依赖用于原生文件选择对话框。
+- [x] 保留拖入 exe 能力，但把“选择 exe”作为更稳定的主路径。
+- [x] 补充 React 组件测试，覆盖点击“选择”后填入 exe 路径。
+- [x] 重新构建 release exe，并同步到项目根目录 `freshstart.exe`。

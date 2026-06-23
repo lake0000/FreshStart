@@ -1,8 +1,8 @@
 import { expect, test, type Page } from "@playwright/test";
 
 async function openApp(page: Page) {
-  await page.goto("/", { waitUntil: "domcontentloaded" });
-  await expect(page.getByRole("heading", { name: "让开机更清爽" })).toBeVisible();
+  await page.goto("/", { waitUntil: "commit" });
+  await expect(page.getByRole("heading", { name: "让开机更清爽" })).toBeVisible({ timeout: 15_000 });
 }
 
 test("renders the FreshStart panel and filters items", async ({ page }) => {
@@ -27,6 +27,19 @@ test("expands a startup path", async ({ page }) => {
   await page.getByRole("button", { name: "展开 Everything 的路径" }).click();
   await expect(page.getByRole("button", { name: "复制 Everything 的路径" })).toBeVisible();
   await expect(page.locator("code").filter({ hasText: '"C:\\Program Files\\Everything\\Everything.exe" -startup' })).toBeVisible();
+});
+
+test("adds a startup item from an exe path", async ({ page }) => {
+  await openApp(page);
+
+  await page.getByRole("button", { name: "添加开机自启" }).click();
+  await page.getByRole("button", { name: "选择" }).click();
+  await expect(page.getByLabel("exe 路径")).toHaveValue("C:\\Tools\\Kimi\\Kimi.exe");
+  await page.getByLabel("启动参数").fill("--startup");
+  await page.getByRole("button", { name: "添加", exact: true }).click();
+
+  await expect(page.getByRole("heading", { name: "Kimi" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "展开 Kimi 的路径" })).toBeVisible();
 });
 
 test("asks for confirmation before toggling a suggested keep item", async ({ page }) => {

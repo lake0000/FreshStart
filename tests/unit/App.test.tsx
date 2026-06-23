@@ -42,6 +42,24 @@ function installBackend(overrides: Partial<FreshStartBackend> = {}) {
       items = items.map((item) => (item.id === id ? { ...item, enabled } : item));
       return structuredClone(items);
     }),
+    addStartupItemFromPath: vi.fn(async (request) => {
+      const name = request.name || "Kimi";
+      items = [
+        {
+          id: `registry:FreshStart_${name}`,
+          name,
+          rawName: `FreshStart_${name}`,
+          source: "registry",
+          enabled: true,
+          command: `"${request.path}"${request.args ? ` ${request.args}` : ""}`,
+          appPath: request.path,
+          riskLevel: "normal",
+        },
+        ...items,
+      ];
+      return structuredClone(items);
+    }),
+    pickExeFile: vi.fn(async () => "C:\\Tools\\Kimi\\Kimi.exe"),
     ...overrides,
   };
   window.__FRESHSTART_BACKEND__ = backend;
@@ -141,5 +159,40 @@ describe("App", () => {
     await user.click(screen.getByRole("button", { name: "复制 Everything 的路径" }));
 
     expect(screen.getByRole("button", { name: "复制 Everything 的路径" })).toHaveTextContent("已复制");
+  });
+
+  it("adds an exe path as a startup item", async () => {
+    const backend = installBackend();
+    const user = userEvent.setup();
+
+    render(<App />);
+    await screen.findByText("Everything");
+    await user.click(screen.getByRole("button", { name: "添加开机自启" }));
+    await user.type(screen.getByLabelText("exe 路径"), "C:\\Tools\\Kimi\\Kimi.exe");
+    await user.type(screen.getByLabelText("启动参数"), "--startup");
+    await user.click(screen.getByRole("button", { name: "添加" }));
+
+    await waitFor(() => {
+      expect(backend.addStartupItemFromPath).toHaveBeenCalledWith({
+        path: "C:\\Tools\\Kimi\\Kimi.exe",
+        args: "--startup",
+      });
+    });
+    expect(await screen.findByText("Kimi")).toBeInTheDocument();
+  });
+
+  it("fills the exe path from the native picker", async () => {
+    const backend = installBackend();
+    const user = userEvent.setup();
+
+    render(<App />);
+    await screen.findByText("Everything");
+    await user.click(screen.getByRole("button", { name: "添加开机自启" }));
+    await user.click(screen.getByRole("button", { name: "选择" }));
+
+    await waitFor(() => {
+      expect(backend.pickExeFile).toHaveBeenCalled();
+    });
+    expect(screen.getByLabelText("exe 路径")).toHaveValue("C:\\Tools\\Kimi\\Kimi.exe");
   });
 });

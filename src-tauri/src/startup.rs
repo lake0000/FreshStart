@@ -47,8 +47,22 @@ pub struct StartupItem {
     pub remembered: bool,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AddStartupItemRequest {
+    pub path: String,
+    #[serde(default)]
+    pub args: Option<String>,
+    #[serde(default)]
+    pub name: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "source", rename_all = "kebab-case", rename_all_fields = "camelCase")]
+#[serde(
+    tag = "source",
+    rename_all = "kebab-case",
+    rename_all_fields = "camelCase"
+)]
 enum DisabledRecord {
     Registry {
         id: String,
@@ -108,7 +122,10 @@ pub fn list_startup_items() -> AppResult<Vec<StartupItem>> {
     for record in records {
         if let Some(active_item) = active_by_id.get(&record.id) {
             merged.push(enrich_active_item(active_item.clone(), &record));
-        } else if record.command.is_some() || record.original_path.is_some() || record.disabled_at.is_some() {
+        } else if record.command.is_some()
+            || record.original_path.is_some()
+            || record.disabled_at.is_some()
+        {
             merged.push(record_to_disabled_item(&record));
         }
     }
@@ -123,7 +140,11 @@ pub fn list_startup_items() -> AppResult<Vec<StartupItem>> {
     Ok(merged)
 }
 
-pub fn set_startup_enabled(id: &str, enabled: bool, expected_command: Option<&str>) -> AppResult<()> {
+pub fn set_startup_enabled(
+    id: &str,
+    enabled: bool,
+    expected_command: Option<&str>,
+) -> AppResult<()> {
     if enabled {
         restore_startup_item(id)
     } else if let Some(value_name) = id.strip_prefix("registry:") {
@@ -145,6 +166,56 @@ pub fn set_startup_enabled(id: &str, enabled: bool, expected_command: Option<&st
     } else {
         Err(message("未知启动项 ID"))
     }
+}
+
+pub fn add_startup_item_from_path(request: AddStartupItemRequest) -> AppResult<()> {
+    let app_path = normalize_exe_path(&request.path)?;
+    let app_path_string = app_path.to_string_lossy().to_string();
+    reject_risky_executable(&app_path)?;
+
+    let raw_name = request
+        .name
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+        .or_else(|| {
+            app_path
+                .file_stem()
+                .and_then(|value| value.to_str())
+                .map(ToOwned::to_owned)
+        })
+        .ok_or_else(|| message("无法识别 exe 名称"))?;
+    let display_name = friendly_app_name(&raw_name, None, Some(&app_path_string));
+    let value_name = startup_value_name(&display_name);
+    let key_path = registry_key_path_for_id("registry:");
+    if registry_value_exists_at(key_path, &value_name)? {
+        return Err(message("同名开机启动项已存在，已拒绝覆盖"));
+    }
+
+    let command = build_startup_command(&app_path_string, request.args.as_deref())?;
+    write_registry_value_at(key_path, &value_name, &command)?;
+
+    let now = Utc::now().to_rfc3339();
+    let (risk_level, risk_reason) = classify_risk(&display_name, Some(&command));
+    let item = StartupItem {
+        id: format!("registry:{value_name}"),
+        name: display_name,
+        raw_name: Some(value_name),
+        source: StartupSource::Registry,
+        enabled: true,
+        command: Some(command),
+        path: None,
+        app_path: Some(app_path_string),
+        risk_level,
+        risk_reason,
+        disabled_at: None,
+        remembered: false,
+    };
+
+    let conn = open_db()?;
+    upsert_seen_item(&conn, &item, &now)?;
+    Ok(())
 }
 
 fn disable_registry_item(
@@ -188,7 +259,11 @@ fn disable_registry_item(
     Ok(())
 }
 
-fn disable_startup_folder_item(id: &str, file_name: &str, expected_command: Option<&str>) -> AppResult<()> {
+fn disable_startup_folder_item(
+    id: &str,
+    file_name: &str,
+    expected_command: Option<&str>,
+) -> AppResult<()> {
     let startup_dir = startup_folder_dir()?;
     let original_path = startup_dir.join(file_name);
     if !original_path.exists() {
@@ -239,7 +314,8 @@ fn disable_startup_folder_item(id: &str, file_name: &str, expected_command: Opti
 
 fn restore_startup_item(id: &str) -> AppResult<()> {
     let conn = open_db()?;
-    let record = load_record(&conn, id)?.ok_or_else(|| message("没有找到可恢复记录，请刷新后重试"))?;
+    let record =
+        load_record(&conn, id)?.ok_or_else(|| message("没有找到可恢复记录，请刷新后重试"))?;
 
     match record.source {
         StartupSource::Registry => {
@@ -328,7 +404,10 @@ fn ensure_column(conn: &Connection, column: &str, definition: &str) -> AppResult
             return Ok(());
         }
     }
-    conn.execute(&format!("ALTER TABLE startup_records ADD COLUMN {column} {definition}"), [])?;
+    conn.execute(
+        &format!("ALTER TABLE startup_records ADD COLUMN {column} {definition}"),
+        [],
+    )?;
     Ok(())
 }
 
@@ -455,14 +534,18 @@ fn enrich_active_item(mut item: StartupItem, record: &StartupRecord) -> StartupI
     if item.app_path.is_none() {
         item.app_path = record.app_path.clone();
     }
-    let (risk_level, risk_reason) = classify_risk(&item.name, item.command.as_deref().or(item.path.as_deref()));
+    let (risk_level, risk_reason) =
+        classify_risk(&item.name, item.command.as_deref().or(item.path.as_deref()));
     item.risk_level = risk_level;
     item.risk_reason = risk_reason;
     item
 }
 
 fn record_to_disabled_item(record: &StartupRecord) -> StartupItem {
-    let command = record.command.clone().or_else(|| record.original_path.clone());
+    let command = record
+        .command
+        .clone()
+        .or_else(|| record.original_path.clone());
     let raw_name = record.raw_name.as_deref().unwrap_or(&record.name);
     let name = friendly_app_name(raw_name, command.as_deref(), record.app_path.as_deref());
     let (risk_level, risk_reason) = classify_risk(&record.name, command.as_deref());
@@ -483,7 +566,8 @@ fn record_to_disabled_item(record: &StartupRecord) -> StartupItem {
 }
 
 fn migrate_state_json(conn: &Connection) -> AppResult<()> {
-    let count: i64 = conn.query_row("SELECT COUNT(*) FROM startup_records", [], |row| row.get(0))?;
+    let count: i64 =
+        conn.query_row("SELECT COUNT(*) FROM startup_records", [], |row| row.get(0))?;
     if count > 0 {
         return Ok(());
     }
@@ -524,7 +608,16 @@ fn insert_legacy_record(conn: &Connection, record: &DisabledRecord, now: &str) -
                 )
                 VALUES (?1, 'registry', ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8)
                 ",
-                params![id, friendly_name, name, value_name, command, app_path, disabled_at, now],
+                params![
+                    id,
+                    friendly_name,
+                    name,
+                    value_name,
+                    command,
+                    app_path,
+                    disabled_at,
+                    now
+                ],
             )?;
         }
         DisabledRecord::StartupFolder {
@@ -567,7 +660,8 @@ fn app_dir() -> AppResult<PathBuf> {
 }
 
 fn startup_folder_dir() -> AppResult<PathBuf> {
-    let base = dirs::config_dir().ok_or_else(|| message("无法定位当前用户 Roaming AppData 目录"))?;
+    let base =
+        dirs::config_dir().ok_or_else(|| message("无法定位当前用户 Roaming AppData 目录"))?;
     Ok(base
         .join("Microsoft")
         .join("Windows")
@@ -601,6 +695,94 @@ fn unique_backup_path(disabled_dir: &Path, file_name: &str) -> PathBuf {
     disabled_dir.join(format!("{stem}-{}.{}", Utc::now().timestamp_millis(), ext))
 }
 
+fn normalize_exe_path(input: &str) -> AppResult<PathBuf> {
+    let trimmed = input.trim().trim_matches('"').trim_matches('\'');
+    if trimmed.is_empty() {
+        return Err(message("请先选择或输入 exe 路径"));
+    }
+
+    let expanded = expand_env_vars(trimmed);
+    let path = PathBuf::from(expanded);
+    if !path.exists() {
+        return Err(message("exe 文件不存在，请检查路径"));
+    }
+    if !path.is_file() {
+        return Err(message("请选择具体的 exe 文件，而不是文件夹"));
+    }
+    let is_exe = path
+        .extension()
+        .and_then(|value| value.to_str())
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("exe"));
+    if !is_exe {
+        return Err(message("当前只支持添加 .exe 程序"));
+    }
+
+    let normalized = fs::canonicalize(&path).unwrap_or(path);
+    let lower = normalized
+        .to_string_lossy()
+        .to_lowercase()
+        .replace('/', "\\");
+    if lower.contains("\\$recycle.bin\\") {
+        return Err(message("不建议把回收站里的程序加入开机自启"));
+    }
+
+    Ok(normalized)
+}
+
+fn reject_risky_executable(path: &Path) -> AppResult<()> {
+    let file_name = path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default()
+        .to_lowercase();
+    for blocked in [
+        "cmd.exe",
+        "powershell.exe",
+        "pwsh.exe",
+        "rundll32.exe",
+        "wscript.exe",
+        "cscript.exe",
+    ] {
+        if file_name == blocked {
+            return Err(message("不支持把命令解释器或脚本宿主加入开机自启"));
+        }
+    }
+    Ok(())
+}
+
+fn build_startup_command(path: &str, args: Option<&str>) -> AppResult<String> {
+    let mut command = format!("\"{}\"", path.trim().trim_matches('"'));
+    if let Some(args) = args.map(str::trim).filter(|value| !value.is_empty()) {
+        if args.contains('\n') || args.contains('\r') {
+            return Err(message("启动参数不能包含换行"));
+        }
+        command.push(' ');
+        command.push_str(args);
+    }
+    Ok(command)
+}
+
+fn startup_value_name(name: &str) -> String {
+    let cleaned: String = name
+        .trim()
+        .chars()
+        .filter(|ch| {
+            !ch.is_control() && !matches!(ch, '\\' | '/' | ':' | '*' | '?' | '"' | '<' | '>' | '|')
+        })
+        .collect();
+    let compact = cleaned.split_whitespace().collect::<Vec<_>>().join(" ");
+    let base = if compact.is_empty() {
+        "App"
+    } else {
+        compact.as_str()
+    };
+    let mut value = format!("FreshStart_{base}");
+    if value.chars().count() > 80 {
+        value = value.chars().take(80).collect();
+    }
+    value
+}
+
 fn display_name(file_name: &str) -> String {
     Path::new(file_name)
         .file_stem()
@@ -625,7 +807,10 @@ fn friendly_app_name(raw_name: &str, command: Option<&str>, app_path: Option<&st
 
     if let Some(command) = command {
         if let Some(path) = executable_path_from_command(command) {
-            if let Some(stem) = Path::new(&path).file_stem().and_then(|value| value.to_str()) {
+            if let Some(stem) = Path::new(&path)
+                .file_stem()
+                .and_then(|value| value.to_str())
+            {
                 return clean_app_name(stem);
             }
         }
@@ -677,7 +862,13 @@ fn known_app_name(raw_name: &str, command: Option<&str>, app_path: Option<&str>)
         ),
         (
             "OneNote",
-            ["onenote", "发送至 onenote", "发送到 onenote", "send to onenote"].as_slice(),
+            [
+                "onenote",
+                "发送至 onenote",
+                "发送到 onenote",
+                "send to onenote",
+            ]
+            .as_slice(),
         ),
     ];
 
@@ -719,7 +910,12 @@ fn executable_path_from_command(command: &str) -> Option<String> {
                 break;
             }
         }
-        return Some(expanded[start..index + 4].trim().trim_matches('"').to_string());
+        return Some(
+            expanded[start..index + 4]
+                .trim()
+                .trim_matches('"')
+                .to_string(),
+        );
     }
 
     None
@@ -758,7 +954,9 @@ fn classify_risk(name: &str, command: Option<&str>) -> (RiskLevel, Option<String
     }
 
     let lower_name = name.to_lowercase();
-    for entry in ["lenovo", "intel", "realtek", "defender", "security", "hotkeys"] {
+    for entry in [
+        "lenovo", "intel", "realtek", "defender", "security", "hotkeys",
+    ] {
         if lower_name.contains(entry) {
             return (RiskLevel::Keep, Some(format!("名称包含 {entry}，建议保留")));
         }
@@ -833,7 +1031,10 @@ fn scan_active_items() -> AppResult<Vec<StartupItem>> {
 
 #[cfg(windows)]
 fn scan_registry_items() -> AppResult<Vec<StartupItem>> {
-    let mut items = scan_registry_run_key("registry", "Software\\Microsoft\\Windows\\CurrentVersion\\Run")?;
+    let mut items = scan_registry_run_key(
+        "registry",
+        "Software\\Microsoft\\Windows\\CurrentVersion\\Run",
+    )?;
     items.extend(scan_registry_run_key(
         "registry32",
         "Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Run",
@@ -1005,7 +1206,8 @@ fn version_display_name(path: &str) -> Option<String> {
         .ok()?;
     }
 
-    let translations = query_translation(&data).unwrap_or_else(|| vec![(0x0409, 0x04b0), (0x0804, 0x04b0)]);
+    let translations =
+        query_translation(&data).unwrap_or_else(|| vec![(0x0409, 0x04b0), (0x0804, 0x04b0)]);
     for key in ["FileDescription", "ProductName"] {
         for (lang, codepage) in &translations {
             let sub_block = format!("\\StringFileInfo\\{lang:04x}{codepage:04x}\\{key}");
@@ -1097,7 +1299,9 @@ mod tests {
 
     #[test]
     fn parses_unquoted_executable_path_with_spaces() {
-        let path = executable_path_from_command("C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe --auto");
+        let path = executable_path_from_command(
+            "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe --auto",
+        );
         assert_eq!(
             path.as_deref(),
             Some("C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe")
@@ -1176,5 +1380,26 @@ mod tests {
             Some("C:\\Users\\u\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\发送至 OneNote.lnk"),
         );
         assert_eq!(name, "OneNote");
+    }
+
+    #[test]
+    fn builds_startup_command_with_optional_args() {
+        let command =
+            build_startup_command("C:\\Tools\\Kimi\\Kimi.exe", Some("--startup")).unwrap();
+        assert_eq!(command, "\"C:\\Tools\\Kimi\\Kimi.exe\" --startup");
+    }
+
+    #[test]
+    fn cleans_startup_value_name() {
+        assert_eq!(startup_value_name("Kimi:/?"), "FreshStart_Kimi");
+        assert_eq!(startup_value_name("  "), "FreshStart_App");
+    }
+
+    #[test]
+    fn rejects_risky_executable_names() {
+        let err = reject_risky_executable(Path::new("C:\\Windows\\System32\\powershell.exe"))
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("不支持"));
     }
 }
